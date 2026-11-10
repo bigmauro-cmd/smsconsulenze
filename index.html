@@ -103,7 +103,9 @@ h1,h2,h3{font-family:var(--serif);color:var(--green-900);line-height:1.15}
 .free p{font-size:1.05rem}
 
 /* ---------- Interventi ---------- */
-.works{display:grid;grid-template-columns:repeat(3,1fr);gap:22px}
+.works{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:22px}
+.work.list.wide{grid-column:1/-1}
+.work.list.wide ul{grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
 .work{background:#fff;border-radius:var(--radius);overflow:hidden;border:1px solid var(--line);box-shadow:var(--shadow);display:flex;flex-direction:column}
 .work figure{aspect-ratio:4/3;overflow:hidden;background:var(--green-soft)}
 .work figure img{width:100%;height:100%;object-fit:cover;transition:transform .6s}
@@ -334,7 +336,7 @@ footer .credits a{color:#9fb8ab}
         <h2>Le soluzioni che progetto</h2>
         <p>Scelgo con te la tecnologia più adatta alla tua casa e alle tue abitudini, valutando costi, risparmio e incentivi disponibili.</p>
       </div>
-      <div class="works">
+      <div class="works" id="works">
         <article class="work reveal">
           <figure><img loading="lazy" src="https://images.unsplash.com/flagged/photo-1566838616631-f2618f74a6a2?auto=format&fit=crop&w=900&q=70" alt="Casa con pannelli fotovoltaici sul tetto"></figure>
           <div class="txt">
@@ -371,7 +373,7 @@ footer .credits a{color:#9fb8ab}
         <h2>Dal preventivo all’incentivo incassato</h2>
       </div>
       <div class="steps">
-        <div class="step reveal"><h3>Analisi</h3><p>Guardo le tue bollette e la tua casa per capire quanto e dove stai spendendo.</p></div>
+        <div class="step reveal"><h3>Analisi e sopralluogo</h3><p>Partiamo dalle tue bollette e da un sopralluogo per valutare impianti, serramenti e isolamento: così capiamo dove si può risparmiare.</p></div>
         <div class="step reveal"><h3>Progetto</h3><p>Calcolo l’intervento più conveniente e te lo presento in modo chiaro, con costi e risparmi.</p></div>
         <div class="step reveal"><h3>Preventivo e lavori</h3><p>Ti accompagno nella scelta del preventivo e ti seguo fino all’installazione.</p></div>
         <div class="step reveal"><h3>Incentivo incassato</h3><p>Preparo e invio io le pratiche: Conto Termico 3.0, detrazioni, bandi locali.</p></div>
@@ -452,6 +454,7 @@ footer .credits a{color:#9fb8ab}
    ========================================================== */
 const SHEET_ID  = "1MFnmZmG2nNRsLxZH9QcjwB1re16rR69MsL1lRzxp5do";
 const SHEET_TAB = "Offerte";
+const SOLUZIONI_TAB = "Soluzioni";   // scheda con i prodotti di "Le soluzioni che progetto"
 
 const PHONE = "338 7327000";
 const EMAIL = "scianmauro.servizi@gmail.com";
@@ -562,13 +565,67 @@ async function loadOffers(){
     if(!r.ok) throw new Error(r.status);
     const txt=await r.text();
     if(/^\s*</.test(txt)) throw new Error("Foglio non pubblico");
-    render(toObjects(parseCSV(txt)),false);
+    const rows=toObjects(parseCSV(txt));
+    /* se la scheda "Offerte" non esiste Google restituisce la prima scheda: la scarto */
+    render(rows.length && "visibile" in rows[0] ? [] : rows,false);
   }catch(e){
     console.warn("Offerte non caricate:",e);
     $box.innerHTML=`<div class="offers-msg">Non riesco a caricare le offerte in questo momento.<br><a href="tel:+393387327000">Chiamami al ${PHONE}</a> per conoscere bandi e promozioni attive.</div>`;
   }
 }
 loadOffers();
+
+/* ==========================================================
+   SOLUZIONI dal foglio "Soluzioni"
+   Colonne: Visibile | Titolo | Descrizione | Immagine
+   - Visibile: SI = mostrato, NO = nascosto
+   - Immagine: link a una foto. Con foto → scheda grande;
+     senza foto → voce nel riquadro verde "E inoltre".
+   Se il foglio non risponde, resta la versione scritta nella pagina.
+   ========================================================== */
+function iconFor(title){
+  const n=norm(title);
+  if(/clima|condizion/.test(n)) return "i-snow";
+  if(/biomass|stuf|caldai|pellet|legna/.test(n)) return "i-flame";
+  if(/bollett|consum|analisi/.test(n)) return "i-receipt";
+  if(/pratic|incentiv|bando|detraz/.test(n)) return "i-filecheck";
+  return "i-home";
+}
+function renderWorks(list){
+  const items=list.filter(o=>o.titolo && yes(o.visibile));
+  const box=document.getElementById("works");
+  if(!items.length){ box.closest("section").style.display="none"; return; }
+  box.closest("section").style.display="";
+  const withImg=items.filter(o=>safeUrl(o.immagine));
+  const noImg=items.filter(o=>!safeUrl(o.immagine));
+  let html=withImg.map(o=>`<article class="work reveal in">
+      <figure><img loading="lazy" src="${esc(safeUrl(o.immagine))}" alt="${esc(o.titolo)}"></figure>
+      <div class="txt"><h3>${esc(o.titolo)}</h3>${o.descrizione?`<p>${esc(o.descrizione)}</p>`:""}</div>
+    </article>`).join("");
+  if(noImg.length){
+    const wide = withImg.length===0 || withImg.length%3===0;
+    html+=`<article class="work list reveal in${wide?" wide":""}"><div class="txt">
+      <h3>${withImg.length?"E inoltre":"Le soluzioni"}</h3><ul>
+      ${noImg.map(o=>`<li><div class="dot"><svg class="icon"><use href="#${iconFor(o.titolo)}"/></svg></div><div><b>${esc(o.titolo)}</b>${o.descrizione?`<span>${esc(o.descrizione)}</span>`:""}</div></li>`).join("")}
+      </ul></div></article>`;
+  }
+  box.innerHTML=html;
+}
+async function loadWorks(){
+  if(!SHEET_ID) return;
+  const url=`https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&headers=1&sheet=${encodeURIComponent(SOLUZIONI_TAB)}&_=${Date.now()}`;
+  try{
+    const r=await fetch(url,{cache:"no-store"});
+    if(!r.ok) throw new Error(r.status);
+    const txt=await r.text();
+    if(/^\s*</.test(txt)) throw new Error("Foglio non pubblico");
+    const rows=toObjects(parseCSV(txt));
+    /* se la scheda "Soluzioni" non esiste Google restituisce la prima scheda: la riconosco dalla colonna Visibile */
+    if(!rows.length || !("visibile" in rows[0]) || !("titolo" in rows[0])) return;
+    renderWorks(rows);
+  }catch(e){ console.warn("Soluzioni non caricate, uso il testo della pagina:",e); }
+}
+loadWorks();
 
 /* Header con bordo allo scroll */
 const tb=document.querySelector(".topbar");
