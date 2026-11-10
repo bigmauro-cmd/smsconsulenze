@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://smsconsulenze.netlify.app/sitemap.xml
